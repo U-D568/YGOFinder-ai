@@ -20,14 +20,15 @@ If args are omitted, reads from environment or .env.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from pathlib import Path
-from typing import List
 
-import numpy as np
-import chromadb
 import dotenv
+
+try:
+    from .snapshot_utils import load_snapshot
+except ImportError:
+    from snapshot_utils import load_snapshot
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,6 +56,11 @@ def getenv(key: str, default: str | None = None) -> str | None:
 def main() -> None:
     dotenv.load_dotenv(".env")
     args = parse_args()
+    if args.batch < 1:
+        raise ValueError("--batch must be positive")
+    # Read and validate before connecting or deleting the existing collection.
+    ids, metas, embeds = load_snapshot(Path(args.src))
+    import chromadb
 
     mode = (args.mode or getenv("chroma_mode", "local")).lower()
     collection_name = args.collection or getenv("chroma_collection", "cards")
@@ -69,28 +75,17 @@ def main() -> None:
         client = chromadb.PersistentClient(path=path)
 
     # (Re)create collection
-    if args.reset:
-        try:
-            client.delete_collection(collection_name)
-        except Exception:
-            pass
     col = client.get_or_create_collection(collection_name, metadata={"hnsw:space": "cosine"})
-
-    # Load snapshot
-    src = Path(args.src)
-    ids: List[str] = json.loads((src / "ids.json").read_text(encoding="utf-8"))
-    metas: List[dict] = json.loads((src / "metadatas.json").read_text(encoding="utf-8"))
-    embeds: np.ndarray = np.load(src / "embeddings.npy")
-
-    if embeds.shape[0] != len(ids) or len(ids) != len(metas):
-        raise RuntimeError("Snapshot parts have different lengths")
+    if args.reset:
+        client.delete_collection(collection_name)
+        col = client.get_or_create_collection(collection_name, metadata={"hnsw:space": "cosine"})
 
     # Import in batches
     n = len(ids)
     bsz = int(args.batch)
     for off in range(0, n, bsz):
         sl = slice(off, min(off + bsz, n))
-        col.add(ids=ids[sl], metadatas=metas[sl], embeddings=embeds[sl].tolist())
+        col.upsert(ids=ids[sl], metadatas=metas[sl], embeddings=embeds[sl].tolist())
         print(f"Imported {min(off+bsz, n)}/{n}")
 
     print("Done.")
@@ -98,4 +93,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
