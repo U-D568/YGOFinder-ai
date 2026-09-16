@@ -22,6 +22,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import uuid
+import fcntl
 from pathlib import Path
 from typing import List
 
@@ -36,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--mode", choices=["local", "http"], help="Import mode")
     p.add_argument("--collection", help="Collection name")
     p.add_argument("--batch", type=int, default=1000, help="Batch size to add")
+    p.add_argument("--state-dir", default=os.getenv("CONTINUOUS_STATE_DIR", "runs/continuous"))
     p.add_argument("--reset", action="store_true", help="Drop existing collection before import")
     # local
     p.add_argument("--path", help="Persistent path (local mode)")
@@ -55,7 +58,23 @@ def getenv(key: str, default: str | None = None) -> str | None:
 def main() -> None:
     dotenv.load_dotenv(".env")
     args = parse_args()
+    root = Path(args.state_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    with (root / "cycle.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        marker = root / "external-index.json"
+        write_revision(marker, pending=True)
+        import_snapshot(args)
+        write_revision(marker, pending=False)
 
+
+def write_revision(path, *, pending):
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"pending": pending, "revision": uuid.uuid4().hex}))
+    temporary.replace(path)
+
+
+def import_snapshot(args):
     mode = (args.mode or getenv("chroma_mode", "local")).lower()
     collection_name = args.collection or getenv("chroma_collection", "cards")
 

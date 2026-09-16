@@ -2,7 +2,7 @@ name: Continuous model evaluation
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 18 * * 3' # Thursday 03:00 Asia/Seoul, once a week
   workflow_dispatch:
 
 permissions:
@@ -23,6 +23,10 @@ jobs:
       MODEL_PATH: ${{ vars.MODEL_PATH }}
       TEACHER_PATH: ${{ vars.TEACHER_PATH }}
       TRAIN_CSV: ${{ vars.TRAIN_CSV }}
+      CATALOG_CSV: ${{ vars.CATALOG_CSV }}
+      OMP_NUM_THREADS: "2"
+      TF_NUM_INTRAOP_THREADS: "2"
+      TF_NUM_INTEROP_THREADS: "1"
       CARD_IMAGE_DIR: ${{ vars.CARD_IMAGE_DIR }}
       EVAL_STATE_DIR: ${{ vars.EVAL_STATE_DIR }}
       TRAINING_PYTHON: ${{ vars.TRAINING_PYTHON }}
@@ -39,6 +43,10 @@ jobs:
           : "${TRAIN_CSV:?Set training CSV path}"
           : "${CARD_IMAGE_DIR:?Set card image directory}"
           : "${EVAL_STATE_DIR:?Set persistent state directory outside checkout}"
+          : "${CATALOG_CSV:?Set complete image catalog CSV (id,card_id,name,type)}"
+          "$TRAINING_PYTHON" -m continuous.index \
+            --catalog-csv "$CATALOG_CSV" --image-dir "$CARD_IMAGE_DIR" \
+            --teacher "$TEACHER_PATH" --state-dir "$EVAL_STATE_DIR"
           "$TRAINING_PYTHON" -m continuous.run \
             --manifest "$EVAL_MANIFEST" --checkpoint "$MODEL_PATH" \
             --teacher "$TEACHER_PATH" --train-csv "$TRAIN_CSV" \

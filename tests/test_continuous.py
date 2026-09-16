@@ -74,6 +74,14 @@ class CycleTests(unittest.TestCase):
             image_dir="images", threshold=0.95, min_improvement=0.01,
             min_samples=1, cooldown_hours=24, epochs=1, batch_size=1, timeout=60,
         )
+        Path(self.args.state_dir).mkdir()
+        (Path(self.args.state_dir) / "vector-state.json").write_text(json.dumps({"revision": "v1", "collection_id": "gallery"}))
+        self.args.train_csv = str(self.root / "train.csv")
+        self.args.teacher = str(self.root / "teacher.h5")
+        self.args.image_dir = str(self.root)
+        Path(self.args.train_csv).write_text("id,type\n1,Effect Monster\n")
+        Path(self.args.teacher).write_bytes(b"teacher")
+        (self.root / "1.jpg").write_bytes(b"training image")
         self.fingerprint = load_samples(manifest)[1]
         self.baseline, self.candidate = 0.8, 0.98
         self.fail_training = False
@@ -96,6 +104,38 @@ class CycleTests(unittest.TestCase):
     def run_mocked(self):
         with patch("continuous.run.subprocess.run", side_effect=self.subprocess):
             return run_cycle(self.args)
+
+    def test_unchanged_healthy_inputs_do_not_run_model_again(self):
+        self.baseline = 0.96
+        self.run_mocked()
+        self.calls.clear()
+        self.assertEqual(self.run_mocked()["status"], "unchanged")
+        self.assertEqual(self.calls, [])
+
+    def test_vector_revision_change_re_evaluates(self):
+        self.baseline = 0.96
+        self.run_mocked()
+        self.calls.clear()
+        (Path(self.args.state_dir) / "vector-state.json").write_text(json.dumps({"revision": "v2", "collection_id": "gallery"}))
+        self.assertEqual(self.run_mocked()["status"], "healthy")
+        self.assertEqual(len(self.calls), 1)
+
+    def test_completed_training_is_not_repeated_after_cooldown(self):
+        self.run_mocked()
+        state_file = Path(self.args.state_dir) / "state.json"
+        state = json.loads(state_file.read_text()); state["last_attempt"] = 0
+        state_file.write_text(json.dumps(state))
+        self.calls.clear()
+        self.assertEqual(self.run_mocked()["status"], "unchanged")
+        self.assertEqual(self.calls, [])
+        (self.root / "1.jpg").write_bytes(b"new training image")
+        self.assertEqual(self.run_mocked()["status"], "candidate_ready")
+        self.assertEqual(len(self.calls), 2)  # reuse baseline, train and evaluate candidate
+
+    def test_pending_vector_index_fails_without_model_execution(self):
+        (Path(self.args.state_dir) / "vector-state.json").write_text(json.dumps({"revision": "v1", "pending": True}))
+        with self.assertRaises(ValueError): self.run_mocked()
+        self.assertEqual(self.calls, [])
 
     def test_healthy_model_never_trains(self):
         self.baseline = 0.96
@@ -122,7 +162,7 @@ class CycleTests(unittest.TestCase):
 
     def test_concurrent_run_skips(self):
         root = Path(self.args.state_dir)
-        root.mkdir()
+        root.mkdir(exist_ok=True)
         with (root / "cycle.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.assertEqual(self.run_mocked()["status"], "already_running")
