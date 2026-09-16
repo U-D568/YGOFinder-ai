@@ -107,11 +107,13 @@ class DecklistDataset(Dataset):
         if index >= len(self):
             raise IndexError("Index out of range")
         image_pathes = [data[0] for data in self.deck_data[index]]
-        is_pendulum = [data[1] for data in self.deck_data[index]]
+        card_types = dict(self.deck_data[index])
 
         self.image_loader.set_queue(image_pathes)
         images = self.image_loader.run()
         ids = self.image_loader.get_file_names()
+        # Parallel image reads can complete in a different order from the queue.
+        is_pendulum = [card_types[path] for path in ids]
         ids = list(map(common.get_filename, ids))
 
         xyxy = []

@@ -1,0 +1,4 @@
+-r requirements.txt
+numpy==1.26.4
+tensorflow==2.15.1
+pandas==2.2.2

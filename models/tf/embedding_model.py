@@ -4,7 +4,10 @@ from tensorflow.keras import Sequential, layers
 
 
 class EmbeddingModel:
-    def __init__(self, input_shape=(224, 224, 3), **kargs):
+    def __init__(self, input_shape=(224, 224, 3), model_path=None, **kargs):
+        if model_path is not None:
+            self.model = tf.keras.models.load_model(model_path, compile=False)
+            return
         self._backbone = EfficientNetV2B0(
             include_top=True,
             weights="imagenet",
@@ -21,9 +24,7 @@ class EmbeddingModel:
 
     def __call__(self, inputs):
         out = self.model(inputs)
-        l2_norm = tf.norm(out, ord=2, axis=-1)
-        l2_norm = tf.expand_dims(l2_norm, axis=-1)
-        return out / l2_norm
+        return tf.math.l2_normalize(out, axis=-1)
 
     def load(self, path):
         self.model = tf.keras.models.load_model(path)

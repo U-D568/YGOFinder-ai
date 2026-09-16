@@ -1,5 +1,11 @@
 # Yu-Gi-Oh card finder
 
+### Continuous evaluation → retraining
+
+운영 모델을 정답 덱 이미지로 주기적으로 평가하고 인식 성능이 기준 아래일 때만
+재학습합니다. 후보 검증, 중복 실행 방지, cooldown 및 실행 설정은
+[continuous evaluation 안내](docs/continuous-evaluation.md)를 참조하세요.
+
 
 Using yolov8 and EfficientNet, recognize Yu-Gi-Oh cards from the deck list image.
 

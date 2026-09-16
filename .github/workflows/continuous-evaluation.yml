@@ -1,0 +1,45 @@
+name: Continuous model evaluation
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: continuous-model-evaluation
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    # Enable only after provisioning a trusted runner with the datasets and models.
+    if: vars.CONTINUOUS_EVALUATION_ENABLED == 'true'
+    runs-on: [self-hosted, yugioh-training]
+    timeout-minutes: 720
+    env:
+      EVAL_MANIFEST: ${{ vars.EVAL_MANIFEST }}
+      MODEL_PATH: ${{ vars.MODEL_PATH }}
+      TEACHER_PATH: ${{ vars.TEACHER_PATH }}
+      TRAIN_CSV: ${{ vars.TRAIN_CSV }}
+      CARD_IMAGE_DIR: ${{ vars.CARD_IMAGE_DIR }}
+      EVAL_STATE_DIR: ${{ vars.EVAL_STATE_DIR }}
+      TRAINING_PYTHON: ${{ vars.TRAINING_PYTHON }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Evaluate and conditionally train
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${TRAINING_PYTHON:?Set absolute Python 3.11 venv path}"
+          : "${EVAL_MANIFEST:?Set labeled evaluation manifest path}"
+          : "${MODEL_PATH:?Set deployed checkpoint path}"
+          : "${TEACHER_PATH:?Set the teacher matching the vector collection}"
+          : "${TRAIN_CSV:?Set training CSV path}"
+          : "${CARD_IMAGE_DIR:?Set card image directory}"
+          : "${EVAL_STATE_DIR:?Set persistent state directory outside checkout}"
+          "$TRAINING_PYTHON" -m continuous.run \
+            --manifest "$EVAL_MANIFEST" --checkpoint "$MODEL_PATH" \
+            --teacher "$TEACHER_PATH" --train-csv "$TRAIN_CSV" \
+            --image-dir "$CARD_IMAGE_DIR" --state-dir "$EVAL_STATE_DIR"

@@ -109,8 +109,7 @@ class v8DetectionLoss:
             dim=2,
         )
         pred_embeds = pred_embeds.permute(0, 2, 1).contiguous()
-        l2_norm = pred_embeds.norm(2, dim=-1, keepdim=True)
-        pred_embeds = pred_embeds / l2_norm
+        pred_embeds = nn.functional.normalize(pred_embeds, dim=-1)
 
         dtype = pred_scores.dtype
         batch_size = pred_scores.shape[0]
@@ -174,22 +173,21 @@ class v8DetectionLoss:
                 fg_mask,
             )
 
-        iou_cls_scores = (iou_scores * target_scores).sum(-1)  # (b, w*h)
-        embed_mask = torch.zeros_like(fg_mask).bool()
-        for batch_index in range(target_gt_idx.shape[0]):
-            for instance_id in torch.unique(target_gt_idx[batch_index]):
-                instance_mask = target_gt_idx[batch_index] == instance_id
-                topk_val, topk_idx = torch.topk(
-                    iou_cls_scores[batch_index] * instance_mask, embed_topk
-                )
-                embed_mask[batch_index][topk_idx] = True
+            iou_cls_scores = (iou_scores * target_scores).sum(-1)
+            embed_mask = torch.zeros_like(fg_mask).bool()
+            for batch_index in range(target_gt_idx.shape[0]):
+                foreground = fg_mask[batch_index]
+                for instance_id in torch.unique(target_gt_idx[batch_index][foreground]):
+                    indices = torch.where(
+                        foreground & (target_gt_idx[batch_index] == instance_id)
+                    )[0]
+                    topk = min(embed_topk, indices.numel())
+                    selected = iou_cls_scores[batch_index, indices].topk(topk).indices
+                    embed_mask[batch_index, indices[selected]] = True
 
-        # Embedding loss (euclidean distance)
-        # embed_weight = iou_cls_scores[embed_mask]
-        kd = kd_loss(pred_embeds[embed_mask], target_embeds[embed_mask])
-        rkd = rkd_loss(target_embeds[embed_mask], pred_embeds[embed_mask])
-        # loss[3] = (kd + rkd) * embed_weight / embed_weight.sum()
-        loss[3] = kd + rkd
+            kd = kd_loss(pred_embeds[embed_mask], target_embeds[embed_mask])
+            rkd = rkd_loss(pred_embeds[embed_mask], target_embeds[embed_mask])
+            loss[3] = kd + rkd
 
         loss[0] *= self.hyp["box"]  # box gain
         loss[1] *= self.hyp["cls"]  # cls gain
