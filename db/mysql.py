@@ -29,13 +29,10 @@ class MySQLConnection:
         col_desc = cursor.description
         result = {}
         data = cursor.fetchone()
-        try:
-            for desc, value in zip(col_desc, data):
-                key = desc[0]
-                result[key] = value
-            return result
-        except:
-            print(1)
+        for desc, value in zip(col_desc, data):
+            key = desc[0]
+            result[key] = value
+        return result
 
     def execute_query(self, query, ttl=1):
         if ttl < 0:

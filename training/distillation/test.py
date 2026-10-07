@@ -75,7 +75,6 @@ def main():
                         top1_acc += 1
     print(f"top1 acc: {top1_acc/total_instance_count*100}%")
     print(f"top5 acc: {top5_acc/total_instance_count*100}%")
-    print(1)
 
 
 if __name__ == "__main__":
