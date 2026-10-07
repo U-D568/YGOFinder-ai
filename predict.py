@@ -4,10 +4,10 @@ import time
 import cv2
 import torch
 
-from data.preprocess.torch import detector_preprocessing
-from utils.image_utils import make_square_shape
-from models.torch import Detector
-from db import ChromaDBConnection
+from training.data.preprocess.torch.detector_preprocess import detector_preprocessing
+from training.data.augmentation.torch.image_utils import make_square_shape
+from models.detector import OneStageDetector
+from db.chroma_db import ChromaDBConnection
 
 
 def parse_args():
@@ -27,19 +27,14 @@ def main():
     student_inputs = detector_preprocessing(student_inputs.copy())
     student_inputs = student_inputs[None, :]
 
-    student_model = Detector()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    student_model = OneStageDetector().to(device)
     pre_model_dict = torch.load(args.model_path, map_location=torch.device("cpu"))
     student_model.load_state_dict(pre_model_dict)
-
-    if not torch.cuda.is_available():
-        student_model = student_model.cuda()
-    student_model = student_model.to("cpu")
     student_model.eval()
 
     with torch.no_grad():
-        if not torch.cuda.is_available():
-            student_inputs = student_inputs.cuda()
-        student_inputs = student_inputs.to("cpu")
+        student_inputs = student_inputs.to(device)
         pred_det, pred_embed = student_model(student_inputs)
     input_shape = student_inputs.shape[2:4]
     det_results = student_model.postprocess(

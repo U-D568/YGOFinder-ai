@@ -3,7 +3,7 @@ import random
 
 import tensorflow as tf
 
-from loss.tf import cosine_distance
+from training.loss.tf.loss import cosine_distance
 
 
 class EmbeddingMatrix:

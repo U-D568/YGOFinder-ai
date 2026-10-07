@@ -1,0 +1,15 @@
+# Versions documented in readme.md
+numpy
+opencv-python
+pandas
+ultralytics
+tensorflow
+
+# Additional direct imports used by the project
+chromadb
+matplotlib
+Pillow
+PyMySQL
+python-dotenv
+scikit-learn
+torch
