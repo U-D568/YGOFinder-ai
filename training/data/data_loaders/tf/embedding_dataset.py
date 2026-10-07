@@ -1,18 +1,15 @@
+from pathlib import Path
+
 import pandas as pd
 import tensorflow as tf
 
 
 class EmbeddingDataset:
     @staticmethod
-    def load(path):
+    def load(path, image_dir="training/datasets/card_images_small"):
         df = pd.read_csv(path)
         img_path = df["id"].tolist()
-        img_path = list(
-            map(
-                lambda x: "training/datasets/card_images_small/" + str(x) + ".jpg",
-                img_path,
-            )
-        )
+        img_path = [str(Path(image_dir) / f"{card_id}.jpg") for card_id in img_path]
         is_pendulum = list(
             map(lambda x: x.lower().startswith("pendulum"), df["type"].tolist())
         )

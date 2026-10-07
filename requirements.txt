@@ -7,9 +7,14 @@ tensorflow
 
 # Additional direct imports used by the project
 chromadb
+fastapi
 matplotlib
 Pillow
 PyMySQL
 python-dotenv
+PyYAML
+pydantic
+pydantic-settings
 scikit-learn
 torch
+uvicorn

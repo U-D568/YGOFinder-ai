@@ -1,0 +1,12 @@
+model:
+  pretrained_weights: weights/yolov8n_detector.pt
+
+data:
+  dataset_yaml: training/datasets/detector_dataset/data.yaml
+
+training:
+  batch_size: 8
+  epochs: 100
+
+prediction:
+  image: pred_test.jpg

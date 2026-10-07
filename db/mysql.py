@@ -1,23 +1,27 @@
+import os
+
+import dotenv
 import pymysql
 from pymysql.err import OperationalError
-import dotenv
-
-
-config = dotenv.dotenv_values(".env")
 
 
 class MySQLConnection:
     def __init__(self):
+        dotenv.load_dotenv()
+        self.host = os.environ.get("host")
+        self.mysql_port = int(os.environ.get("mysql_port"))
+        self.mysql_user = os.environ.get("mysql_user")
+        self.mysql_passwd = os.environ.get("mysql_passwd")
+        self.mysql_db = os.environ.get("mysql_db")
         self.try_connect()
 
     def try_connect(self):
-        host = config["host"]
-        port = config["mysql_port"]
-        user = config["mysql_user"]
-        passwd = config["mysql_passwd"]
-        db = config["mysql_db"]
         self.conn = pymysql.connect(
-            host=host, port=int(port), user=user, passwd=passwd, db=db
+            host=self.host,
+            port=self.mysql_port,
+            user=self.mysql_user,
+            password=self.mysql_passwd,
+            database=self.mysql_db,
         )
 
     def get_metadata(self, id):

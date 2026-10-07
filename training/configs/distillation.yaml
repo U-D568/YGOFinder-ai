@@ -1,0 +1,33 @@
+data:
+  train_csv: training/datasets/train.csv
+  valid_csv: training/datasets/valid.csv
+  card_image_dir: training/datasets/card_images_small
+  deck_size_range: [1, 4]
+
+model:
+  student:
+    pretrained_weights: weights/yolov8n_detector.pt
+    train_embedding_only: false
+  teacher:
+    embedding_weights: training/embedding/weights/best.h5
+
+training:
+  epochs: 100
+  batch_size: 8
+  optimizer:
+    name: AdamW
+    learning_rate: 0.00001
+    weight_decay: 0.01
+  loss:
+    box_gain: 7.5
+    class_gain: 0.5
+    dfl_gain: 1.5
+    embedding_gain: 0
+  embedding_topk:
+    start: 1
+    increase_every_epochs: 50
+
+checkpoint:
+  directory: training/distillation/weights
+  save_best_as: best.pt
+  save_last_as: last.pt

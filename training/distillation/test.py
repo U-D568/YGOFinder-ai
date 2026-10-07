@@ -5,25 +5,32 @@ from db.chroma_db import ChromaDBConnection
 from training.data.preprocess.torch.detector_preprocess import detector_preprocessing
 from training.data.data_loaders.torch.deck_dataset import DecklistDataset
 from models.detector import OneStageDetector
+from training.configs.mapper.distillation import load_distillation_config
 
 
 def main():
-    # variabels
-    batch_size = 8
+    config = load_distillation_config()
     chroma_db = ChromaDBConnection()
 
     # load model
     student_model = OneStageDetector()
-    student_model.load("best.pt")
+    student_model.load(
+        str(config.checkpoint.directory / config.checkpoint.save_best_as)
+    )
 
     student_model.eval()
 
     # valid_dataset
     valid_dataset = DecklistDataset.load_from_csv(
-        "training/datasets/train.csv", 1
+        str(config.data.valid_csv),
+        1,
+        image_dir=str(config.data.card_image_dir),
     )
     valid_loader = DataLoader(
-        valid_dataset, batch_size, shuffle=True, collate_fn=valid_dataset.collate_fn
+        valid_dataset,
+        config.training.batch_size,
+        shuffle=True,
+        collate_fn=valid_dataset.collate_fn,
     )
 
     total_image_count = 0

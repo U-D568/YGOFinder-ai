@@ -10,6 +10,7 @@ from training.data.augmentation.tf.embeds import EmbeddingAugmentation
 from structures.embedding_matrix import EmbeddingMatrix
 from training.loss.tf.loss import cosine_distance
 from models.embedding_model import EmbeddingModel
+from training.configs.mapper.embedding import load_embedding_config
 
 
 gpus = tf.config.list_physical_devices("GPU")
@@ -21,32 +22,39 @@ if gpus:
 
 
 def main():
-    # train hyper parameter
-    HARD_SELECT = 0
-    BATCH_SIZE = 8
-    INPUT_SHAPE = (224, 224, 3)
+    config = load_embedding_config()
 
     # preprocessor
-    augmentation = EmbeddingAugmentation(0.1, 0.4)
+    augmentation = EmbeddingAugmentation(
+        config.training.augmentation.min_ratio,
+        config.training.augmentation.max_ratio,
+    )
 
     # initalize hyper-parameters
-    model = EmbeddingModel(INPUT_SHAPE)
-    model.load("training/embedding/weights/best.h5")
+    model = EmbeddingModel(config.model.input_shape)
+    checkpoint_path = config.checkpoint.directory / config.checkpoint.save_best_as
+    model.load(str(checkpoint_path))
 
     # data preparation
-    train_dataset = EmbeddingDataset.load("training/datasets/train.csv")
-    valid_dataset = EmbeddingDataset.load("training/datasets/valid.csv")
+    train_dataset = EmbeddingDataset.load(
+        str(config.data.train_csv), str(config.data.card_image_dir)
+    )
+    valid_dataset = EmbeddingDataset.load(
+        str(config.data.valid_csv), str(config.data.card_image_dir)
+    )
     valid_dataset = valid_dataset + train_dataset
     valid_matrix = EmbeddingMatrix(model, valid_dataset)
     valid_matrix.update_matrix()
 
-    valid_dataset = EmbeddingDataset.load("training/datasets/valid.csv")
+    valid_dataset = EmbeddingDataset.load(
+        str(config.data.valid_csv), str(config.data.card_image_dir)
+    )
     gc.collect()
 
     hit_count = 0
     false_data = []
     false_pred = []
-    for batch in valid_dataset.dataset.batch(BATCH_SIZE):
+    for batch in valid_dataset.dataset.batch(config.training.validation_batch_size):
         anchor_img, index = batch
         positive_img = augmentation(anchor_img)
 

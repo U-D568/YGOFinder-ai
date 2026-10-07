@@ -1,20 +1,20 @@
+import os
 from typing import List
 
 import chromadb
 import dotenv
 
 
-config = dotenv.dotenv_values(".env")
-
-
 class ChromaDBConnection:
     def __init__(self):
-        host = config["host"]
-        port = config["chroma_port"]
-        collection_name = config["chroma_collection"]
-        self.client = chromadb.HttpClient(host, port)
+        dotenv.load_dotenv()
+        self.host = os.environ.get("host")
+        self.port = os.environ.get("chroma_port")
+        self.collection = os.environ.get("chroma_collection")
+
+        self.client = chromadb.HttpClient(self.host, self.port)
         self.collection = self.client.get_or_create_collection(
-            name=collection_name, metadata={"hnsw:space": "cosine"}
+            name=self.chroma_collection, metadata={"hnsw:space": "cosine"}
         )
 
     def remove_none_values(self, metadata: List[dict]):

@@ -2,6 +2,7 @@ import gc
 import datetime
 import logging
 import random
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,7 @@ from training.data.data_loaders.torch.deck_dataset import DecklistDataset
 from training.loss.torch.detection_loss import v8DetectionLoss
 from models.embedding_model import EmbeddingModel
 from models.detector import OneStageDetector
+from training.configs.mapper.distillation import load_distillation_config
 
 
 def make_adamw(model, lr=1e-4, momentum=0.9, decay=0.01):
@@ -44,15 +46,14 @@ def make_adamw(model, lr=1e-4, momentum=0.9, decay=0.01):
     return optimizer
 
 
-def make_dataset(df_path, deck_size):
+def make_dataset(df_path, deck_size, image_dir):
     X_train = pd.read_csv(df_path)
     id_list = X_train["id"].tolist()
-    prefix = "training/datasets/card_images_small/"
-    id_list = list(map(lambda x: prefix + str(x) + ".jpg", id_list))
+    id_list = [str(Path(image_dir) / f"{card_id}.jpg") for card_id in id_list]
     card_type = list(
         map(lambda x: x.lower().startswith("pendulum"), X_train["type"].tolist())
     )
-    return DecklistDataset(id_list, card_type, deck_size)
+    return DecklistDataset(id_list, card_type, deck_shape=deck_size)
 
 
 def run_one_epoch(
@@ -63,6 +64,8 @@ def run_one_epoch(
     loss_fn,
     is_train,
     optimizer,
+    embedding_topk_start,
+    embedding_topk_interval,
 ):
     teacher_preprocess = EmbeddingPreprocessor()
     device = next(student_model.parameters()).device
@@ -115,7 +118,7 @@ def run_one_epoch(
                 preds = student_model(student_inputs)
 
         # loss
-        embed_topk = epoch // 50 + 1
+        embed_topk = embedding_topk_start + epoch // embedding_topk_interval
         loss, loss_item, fg_mask = loss_fn(preds, batch, embed_topk=embed_topk)
         total_loss += loss_item.detach().cpu()
         sample_count += batch_size
@@ -132,11 +135,8 @@ def run_one_epoch(
 
 
 def main():
-    # variables
+    config = load_distillation_config()
     use_logger = True
-    batch_size = 8
-    epochs = 100
-    train_embedding_only = False
     device = (
         torch.device("cuda", index=0)
         if torch.cuda.is_available()
@@ -146,10 +146,15 @@ def main():
 
     # prepare datasets
     train_dataset = DecklistDataset.load_from_csv(
-        "training/datasets/train.csv", (1, 4)
+        str(config.data.train_csv),
+        config.data.deck_size_range,
+        image_dir=str(config.data.card_image_dir),
     )
     train_loader = DataLoader(
-        train_dataset, batch_size, shuffle=True, collate_fn=train_dataset.collate_fn
+        train_dataset,
+        config.training.batch_size,
+        shuffle=True,
+        collate_fn=train_dataset.collate_fn,
     )
 
     # valid_dataset = make_dataset("datasets/valid.csv", 1)
@@ -158,7 +163,7 @@ def main():
     # )
 
     # prepare student model
-    pretrained_model = YOLO("weights/yolov8n_detector.pt")
+    pretrained_model = YOLO(str(config.model.student.pretrained_weights))
     pre_model_dict = pretrained_model.model.model.state_dict()
     student_model = OneStageDetector()
     model_dict = student_model.state_dict()
@@ -176,7 +181,7 @@ def main():
     del pretrained_model, pre_model_dict
 
     for name, param in student_model.named_parameters():
-        if train_embedding_only:
+        if config.model.student.train_embedding_only:
             if "embedding_layers" in name:
                 param.requires_grad_(True)
             else:
@@ -196,19 +201,32 @@ def main():
 
     # prepare teacher model
     teacher_model = EmbeddingModel()
-    teacher_model.load("training/embedding/weights/best.h5")
+    teacher_model.load(str(config.model.teacher.embedding_weights))
 
     # losses
     # box_gain=7.5, cls_gain=0.5, dfl_gain=1.5,
-    det_loss = v8DetectionLoss(head=student_model.layer22, device=device, box_gain=7.5, cls_gain=0.5, dfl_gain=1.5, embed_gain=0)
-    optimizer = AdamW(student_model.parameters(), lr=1e-5, weight_decay=0.01)
+    det_loss = v8DetectionLoss(
+        head=student_model.layer22,
+        device=device,
+        box_gain=config.training.loss.box_gain,
+        cls_gain=config.training.loss.class_gain,
+        dfl_gain=config.training.loss.dfl_gain,
+        embed_gain=config.training.loss.embedding_gain,
+    )
+    optimizer = AdamW(
+        student_model.parameters(),
+        lr=config.training.optimizer.learning_rate,
+        weight_decay=config.training.optimizer.weight_decay,
+    )
 
     # grad norm
     # grad_norm = gradNorm.GradNorm(3, student_model.layer21)
 
     # training
     best_loss = torch.inf
-    for epoch in range(epochs):
+    checkpoint_dir = config.checkpoint.directory
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    for epoch in range(config.training.epochs):
         train_dataset.shuffle()
         train_loss = run_one_epoch(
             epoch,
@@ -218,6 +236,8 @@ def main():
             det_loss,
             True,
             optimizer,
+            config.training.embedding_topk.start,
+            config.training.embedding_topk.increase_every_epochs,
         )
 
         if use_logger:
@@ -236,9 +256,14 @@ def main():
 
         loss = train_loss.sum().detach().cpu().item()
         if loss < best_loss:
-            torch.save(student_model.state_dict(), f"best.pt")
+            torch.save(
+                student_model.state_dict(),
+                checkpoint_dir / config.checkpoint.save_best_as,
+            )
             best_loss = loss
-        torch.save(student_model.state_dict(), f"last.pt")
+        torch.save(
+            student_model.state_dict(), checkpoint_dir / config.checkpoint.save_last_as
+        )
 
 
 if __name__ == "__main__":
